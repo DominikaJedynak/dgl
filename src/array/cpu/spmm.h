@@ -250,6 +250,7 @@ void SpMMCmpCsr(
       has_idx ? static_cast<IdType*>(csr.data->data) : nullptr;
   const DType* X = Op::use_lhs ? static_cast<DType*>(ufeat->data) : nullptr;
   const DType* W = Op::use_rhs ? static_cast<DType*>(efeat->data) : nullptr;
+  const IdType* E_indices = IsNullArray(E_Redir) ? nullptr : E_Redir.Ptr<IdType>();
   const int64_t dim = bcast.out_len, lhs_dim = bcast.lhs_len,
                 rhs_dim = bcast.rhs_len;
   DType* O = static_cast<DType*>(out->data);
@@ -289,7 +290,8 @@ void SpMMCmpCsr(
         IdType* argw_off = argW + rid * dim;
         for (IdType j = row_start; j < row_end; ++j) {
           const IdType cid = indices[j];
-          const IdType eid = has_idx ? edges[j] : j;
+          const IdType eid_ = has_idx ? edges[j] : j;
+          const IdType eid = (E_indices != nullptr) ? E_indices[eid_] : eid_;
           for (int64_t k = 0; k < dim; ++k) {
             const int64_t lhs_add = bcast.use_bcast ? bcast.lhs_offset[k] : k;
             const int64_t rhs_add = bcast.use_bcast ? bcast.rhs_offset[k] : k;
