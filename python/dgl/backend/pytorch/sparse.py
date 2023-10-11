@@ -127,6 +127,13 @@ def spmm_cache_argY(binary_op, reduce_op, req_grad_X, req_grad_Y):
     return False
 
 
+def spmm_cache_redirection(binary_op, reduce_op, req_grad_X, req_grad_Y):
+    """Rules to identify whether to cache efeats_redirected_indices in SpMM forward stage."""
+    if binary_op == "copy_lhs":
+        return False
+    return True
+
+
 class empty_context():
     """Empty context that does nothing"""
 
@@ -177,11 +184,12 @@ class GSpMM(th.autograd.Function):
             X = None
         if not spmm_cache_Y(op, reduce_op, req_grad_X, req_grad_Y):
             Y = None
-            efeats_redirected_indices = None
         if not spmm_cache_argX(op, reduce_op, req_grad_X, req_grad_Y):
             argX = None
         if not spmm_cache_argY(op, reduce_op, req_grad_X, req_grad_Y):
             argY = None
+        if not spmm_cache_redirection(op, reduce_op, req_grad_X, req_grad_Y):
+            efeats_redirected_indices = None
         ctx.save_for_backward(X, Y, efeats_redirected_indices, argX, argY)
         return out
 
@@ -205,8 +213,7 @@ class GSpMM(th.autograd.Function):
                     dX = gspmm(g_rev, "mul", "sum", dZ, Y,
                                efeats_redirected_indices)
                 elif op == "add":
-                    dX = gspmm(g_rev, "copy_lhs", "sum", dZ,
-                               Y, efeats_redirected_indices)
+                    dX = gspmm(g_rev, "copy_lhs", "sum", dZ, Y)
                 elif op == "copy_lhs":
                     dX = gspmm(g_rev, "copy_lhs", "sum", dZ, None)
             else:  # max/min
@@ -241,6 +248,11 @@ class GSpMM(th.autograd.Function):
             dY = _reduce_grad(dY, Y_shape)
         else:  # Y has no gradient
             dY = None
+
+        # We need to accumulate gradient depending on the edge type if redirection is present.
+        if efeats_redirected_indices is not None:
+            dY = _scatter_add(dY, efeats_redirected_indices, th.max(efeats_redirected_indices) + 1)
+
         return None, None, None, dX, dY, None, None, None, None
 
 
