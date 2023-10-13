@@ -88,30 +88,30 @@ def _expand(x, shape):
     return x.expand(-1, *shape)
 
 
-def spmm_cache_X(binary_op, reduce_op, req_grad_X, req_grad_Y):
+def spmm_cache_X(op, reduce_op, req_grad_X, req_grad_Y):
     """Rules to identify whether to cache X in SpMM forward stage."""
-    if binary_op != "copy_lhs" and req_grad_Y:
+    if op != "copy_lhs" and req_grad_Y:
         if reduce_op == "sum":
             return True
         else:
-            if binary_op == "mul":
+            if op == "mul":
                 return True
     return False
 
 
-def spmm_cache_Y(binary_op, reduce_op, req_grad_X, req_grad_Y):
+def spmm_cache_Y(op, reduce_op, req_grad_X, req_grad_Y):
     """Rules to identify whether to cache Y in SpMM forward stage."""
-    if binary_op != "copy_rhs" and req_grad_X:
+    if op != "copy_rhs" and req_grad_X:
         if reduce_op == "sum":
-            if binary_op in ["mul", "add"]:
+            if op in ["mul", "add"]:
                 return True
         else:
-            if binary_op == "mul":
+            if op == "mul":
                 return True
     return False
 
 
-def spmm_cache_argX(binary_op, reduce_op, req_grad_X, req_grad_Y):
+def spmm_cache_argX(op, reduce_op, req_grad_X, req_grad_Y):
     """Rules to identify whether to cache argX in SpMM forward stage."""
     if req_grad_X or req_grad_Y:
         if reduce_op in ["min", "max"]:
@@ -119,7 +119,7 @@ def spmm_cache_argX(binary_op, reduce_op, req_grad_X, req_grad_Y):
     return False
 
 
-def spmm_cache_argY(binary_op, reduce_op, req_grad_X, req_grad_Y):
+def spmm_cache_argY(op, reduce_op, req_grad_X, req_grad_Y):
     """Rules to identify whether to cache argY in SpMM forward stage."""
     if req_grad_X or req_grad_Y:
         if reduce_op in ["min", "max"]:
@@ -127,9 +127,9 @@ def spmm_cache_argY(binary_op, reduce_op, req_grad_X, req_grad_Y):
     return False
 
 
-def spmm_cache_redirection(binary_op, reduce_op, req_grad_X, req_grad_Y):
+def spmm_cache_redirection(op, reduce_op, req_grad_X, req_grad_Y):
     """Rules to identify whether to cache efeats_redirected_indices in SpMM forward stage."""
-    if binary_op == "copy_lhs":
+    if op == "copy_lhs":
         return False
     return True
 
@@ -212,9 +212,7 @@ class GSpMM(th.autograd.Function):
                 if op == "mul":
                     dX = gspmm(g_rev, "mul", "sum", dZ, Y,
                                efeats_redirected_indices)
-                elif op == "add":
-                    dX = gspmm(g_rev, "copy_lhs", "sum", dZ, Y)
-                elif op == "copy_lhs":
+                elif op in ["add", "copy_lhs"]:
                     dX = gspmm(g_rev, "copy_lhs", "sum", dZ, None)
             else:  # max/min
                 dX = th.zeros(
@@ -235,7 +233,7 @@ class GSpMM(th.autograd.Function):
                 elif op == "mul":
                     dY = gsddmm(gidx, "mul", X, dZ)
                 elif op in ["add", "copy_rhs"]:
-                    dY = gsddmm(gidx, "copy_rhs", X, dZ)
+                    dY = gsddmm(gidx, "copy_rhs", None, dZ)
             else:  # max/min
                 dY = th.zeros(
                     (Y_shape[0],) + dZ.shape[1:], dtype=dtype, device=device
