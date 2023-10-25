@@ -150,6 +150,7 @@ def _disable_autocast_if_enabled():
         return empty_context()
 
 
+
 def _cast_if_autocast_enabled(*args):
     if not th.is_autocast_enabled():
         return args
@@ -159,10 +160,11 @@ def _cast_if_autocast_enabled(*args):
         )
 
 
+
 class GSpMM(th.autograd.Function):
     @staticmethod
-    def forward(ctx, gidx, op, reduce_op, X, Y):
-        out, (argX, argY) = _gspmm(gidx, op, reduce_op, X, Y)
+    def forward(ctx, gidx, op, reduce_op, X, Y, efeats_redirected_indices):
+        out, (argX, argY) = _gspmm(gidx, op, reduce_op, X, Y, efeats_redirected_indices)
         reduce_last = _need_reduce_last_dim(X, Y)
         X_shape = X.shape if X is not None else None
         Y_shape = Y.shape if Y is not None else None
@@ -184,11 +186,12 @@ class GSpMM(th.autograd.Function):
             X = None
         if not spmm_cache_Y(op, reduce_op, req_grad_X, req_grad_Y):
             Y = None
+            efeats_redirected_indices = None
         if not spmm_cache_argX(op, reduce_op, req_grad_X, req_grad_Y):
             argX = None
         if not spmm_cache_argY(op, reduce_op, req_grad_X, req_grad_Y):
             argY = None
-        ctx.save_for_backward(X, Y, argX, argY)
+        ctx.save_for_backward(X, Y, efeats_redirected_indices, argX, argY)
         return out
 
     @staticmethod
@@ -203,14 +206,14 @@ class GSpMM(th.autograd.Function):
             device,
             reduce_last,
         ) = ctx.backward_cache
-        X, Y, argX, argY = ctx.saved_tensors
+        X, Y, efeats_redirected_indices, argX, argY = ctx.saved_tensors
         if op != "copy_rhs" and ctx.needs_input_grad[3]:
             g_rev = gidx.reverse()
             if reduce_op == "sum":
                 if op == "mul":
-                    dX = gspmm(g_rev, "mul", "sum", dZ, Y)
+                    dX = gspmm(g_rev, "mul", "sum", dZ, Y, efeats_redirected_indices)
                 elif op == "add":
-                    dX = gspmm(g_rev, "copy_lhs", "sum", dZ, Y)
+                    dX = gspmm(g_rev, "copy_lhs", "sum", dZ, Y, efeats_redirected_indices)
                 elif op == "copy_lhs":
                     dX = gspmm(g_rev, "copy_lhs", "sum", dZ, None)
             else:  # max/min
@@ -1020,14 +1023,15 @@ class GATHERMM(th.autograd.Function):
         return A_grad, B_grad, None, None
 
 
-def gspmm(gidx, op, reduce_op, lhs_data, rhs_data):
+def gspmm(gidx, op, reduce_op, lhs_data, rhs_data, efeats_redirected_indices=None):
     if op == "sub":
         op = "add"
         rhs_data = -rhs_data
     if op == "div":
         op = "mul"
         rhs_data = 1.0 / rhs_data
-    args = _cast_if_autocast_enabled(gidx, op, reduce_op, lhs_data, rhs_data)
+    args = _cast_if_autocast_enabled(gidx, op, reduce_op, lhs_data,
+                                     rhs_data, efeats_redirected_indices)
     with _disable_autocast_if_enabled():
         return GSpMM.apply(*args)
 

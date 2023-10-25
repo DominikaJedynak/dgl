@@ -23,7 +23,7 @@ namespace aten {
 template <int XPU, typename IdType, typename DType>
 void SpMMCsr(
     const std::string& op, const std::string& reduce, const BcastOff& bcast,
-    const aten::CSRMatrix& csr, NDArray ufeat, NDArray efeat, NDArray out,
+    const aten::CSRMatrix& csr, NDArray ufeat, NDArray efeat, NDArray out, NDArray E_Redir,
     std::vector<NDArray> out_aux);
 
 /**
@@ -55,6 +55,7 @@ void SDDMMCsr(
     const std::string& op, const BcastOff& bcast, const aten::CSRMatrix& csr,
     NDArray lhs, NDArray rhs, NDArray out, int lhs_target, int rhs_target);
 /**
+
  * @brief Generalized Sampled Dense-Dense Matrix Multiplication on Csr format
  * with heterograph support.
  */

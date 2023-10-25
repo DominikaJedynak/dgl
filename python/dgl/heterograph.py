@@ -37,6 +37,7 @@ from .view import (
 __all__ = ["DGLGraph", "combine_names"]
 
 
+
 class DGLGraph(object):
     """Class for storing graph structure and node/edge feature data.
 
@@ -5015,9 +5016,12 @@ class DGLGraph(object):
             edges, message_func, reduce_func, apply_node_func, etype=etype
         )
 
-    def update_all(
-        self, message_func, reduce_func, apply_node_func=None, etype=None
-    ):
+    def update_all(self,
+                   message_func,
+                   reduce_func,
+                   apply_node_func=None,
+                   etype=None,
+                   efeats_redirected=None):
         """Send messages along all the edges of the specified type
         and update all the nodes of the corresponding destination type.
 
@@ -5110,8 +5114,8 @@ class DGLGraph(object):
             _, dtid = self._graph.metagraph.find_edge(etid)
             g = self if etype is None else self[etype]
             ndata = core.message_passing(
-                g, message_func, reduce_func, apply_node_func
-            )
+                g, message_func, reduce_func, apply_node_func,
+                efeats_redirected)
             if (
                 core.is_builtin(reduce_func)
                 and reduce_func.name in ["min", "max"]
@@ -5137,9 +5141,8 @@ class DGLGraph(object):
                     "multi_update_all instead."
                 )
             g = self
-            all_out = core.message_passing(
-                g, message_func, reduce_func, apply_node_func
-            )
+            all_out = core.message_passing(g, message_func, reduce_func, apply_node_func,
+                                           efeats_redirected)
             key = list(all_out.keys())[0]
             out_tensor_tuples = all_out[key]
 
@@ -6626,6 +6629,7 @@ def combine_names(names, ids=None):
     else:
         selected = sorted([names[i] for i in ids])
         return "+".join(selected)
+
 
 
 class DGLBlock(DGLGraph):
