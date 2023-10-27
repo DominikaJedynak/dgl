@@ -46,8 +46,9 @@ template <typename IdType, typename DType, typename Op>
 typename std::enable_if<!std::is_same<DType, BFloat16>::value, void>::type
 SpMMSumCsrNaive(
     const BcastOff& bcast, const CSRMatrix& csr, const DType* X, const DType* W,
-    DType* O) {
+    DType* O, const IdType* E_indices) {
   const bool has_idx = !IsNullArray(csr.data);
+  const bool has_edge_redirection = (E_indices != nullptr);
   const IdType* indptr = csr.indptr.Ptr<IdType>();
   const IdType* indices = csr.indices.Ptr<IdType>();
   const IdType* edges = csr.data.Ptr<IdType>();
@@ -58,7 +59,8 @@ SpMMSumCsrNaive(
       DType* out_off = O + rid * dim;
       for (IdType j = row_start; j < row_end; ++j) {
         const IdType cid = indices[j];
-        const IdType eid = has_idx ? edges[j] : j;
+        const IdType eid_ = has_idx ? edges[j] : j;
+        const IdType eid = has_edge_redirection ? E_indices[eid_] : eid_;
         for (int64_t k = 0; k < dim; ++k) {
           const int64_t lhs_add = bcast.use_bcast ? bcast.lhs_offset[k] : k;
           const int64_t rhs_add = bcast.use_bcast ? bcast.rhs_offset[k] : k;
@@ -149,8 +151,8 @@ void SpMMSumCsr(
       bcast.use_bcast || std::is_same<DType, double>::value ||
       (std::is_same<DType, BFloat16>::value && cpu_id < LIBXSMM_X86_AVX512) ||
       !dgl::runtime::Config::Global()->IsLibxsmmAvailable();
-  if (!no_libxsmm) {
-    SpMMSumCsrLibxsmm<IdType, DType, Op>(bcast, csr, ufeat, efeat, out, E_Indices);
+  if (!no_libxsmm && E_Indices == nullptr) {
+    SpMMSumCsrLibxsmm<IdType, DType, Op>(bcast, csr, ufeat, efeat, out);
   } else {
 #endif  // USE_LIBXSMM
 #endif  // _WIN32
@@ -275,7 +277,7 @@ void SpMMCmpCsr(
                           std::is_same<DType, double>::value ||
                           cpu_id < LIBXSMM_X86_AVX512 ||
                           !dgl::runtime::Config::Global()->IsLibxsmmAvailable();
-  if (!no_libxsmm) {
+  if (!no_libxsmm && E_indices == nullptr) {
     SpMMCmpCsrLibxsmm<IdType, DType, Op, Cmp>(
         bcast, csr, ufeat, efeat, out, argu, arge);
   } else {

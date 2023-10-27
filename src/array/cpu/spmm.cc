@@ -64,7 +64,7 @@ void SpMMCsrHetero(
         NDArray efeat =
             (vec_efeat.size() == 0) ? NullArray() : vec_efeat[etype];
         NDArray out = (*vec_out)[dst_id];
-        cpu::SpMMSumCsr<IdType, DType, Op>(bcast, csr, ufeat, efeat, out);
+        cpu::SpMMSumCsr<IdType, DType, Op>(bcast, csr, ufeat, efeat, out, NullArray());
       }
     });
   } else if (reduce == "max" || reduce == "min") {
@@ -126,11 +126,11 @@ void SpMMCsrHetero(
 
 template void SpMMCsr<kDGLCPU, int32_t, BFloat16>(
     const std::string& op, const std::string& reduce, const BcastOff& bcast,
-    const CSRMatrix& csr, NDArray ufeat, NDArray efeat, NDArray out,
+    const CSRMatrix& csr, NDArray ufeat, NDArray efeat, NDArray out, NDArray E_Redir,
     std::vector<NDArray> out_aux);
 template void SpMMCsr<kDGLCPU, int64_t, BFloat16>(
     const std::string& op, const std::string& reduce, const BcastOff& bcast,
-    const CSRMatrix& csr, NDArray ufeat, NDArray efeat, NDArray out,
+    const CSRMatrix& csr, NDArray ufeat, NDArray efeat, NDArray out, NDArray E_Redir,
     std::vector<NDArray> out_aux);
 template void SpMMCsr<kDGLCPU, int32_t, float>(
     const std::string& op, const std::string& reduce, const BcastOff& bcast,

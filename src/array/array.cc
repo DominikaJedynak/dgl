@@ -1154,7 +1154,7 @@ void CSRSpMM(
     ATEN_ID_TYPE_SWITCH(csr.indptr->dtype, IdType, {
       ATEN_FLOAT_TYPE_SWITCH_16BITS(out->dtype, Dtype, XPU, "Feature data", {
         SpMMCsr<XPU, IdType, Dtype>(
-            op, reduce, bcast, csr, ufeat, efeat, out, out_aux);
+            op, reduce, bcast, csr, ufeat, efeat, out, NullArray(), out_aux);
       });
     });
   });
