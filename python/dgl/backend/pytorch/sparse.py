@@ -130,7 +130,7 @@ def spmm_cache_argY(op, reduce_op, req_grad_X, req_grad_Y):
 
 def spmm_cache_redirection(op, reduce_op, req_grad_X, req_grad_Y):
     """Rules to identify whether to cache efeats_redirected_indices in SpMM forward stage."""
-    if op == "copy_lhs":
+    if op == "copy_lhs" or reduce_op in ["min", "max"]:
         return False
     return True
 
@@ -260,7 +260,7 @@ class GSpMM(th.autograd.Function):
         if efeats_redirected_indices is not None:
             dY = _scatter_add(dY, efeats_redirected_indices, th.max(efeats_redirected_indices) + 1)
 
-        return None, None, None, dX, dY
+        return None, None, None, dX, dY, None, None, None
 
 
 class GSpMM_hetero(th.autograd.Function):
