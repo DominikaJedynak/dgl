@@ -309,7 +309,14 @@ def invoke_gsddmm(graph, func):
 
 
 def invoke_gspmm(
-        graph, mfunc, rfunc, *, srcdata=None, dstdata=None, edata=None, efeats_redirected=None,
+    graph,
+    mfunc,
+    rfunc,
+    *,
+    srcdata=None,
+    dstdata=None,
+    edata=None,
+    efeats_redirected=None,
 ):
     """Invoke g-SPMM computation on the graph.
 
@@ -395,7 +402,9 @@ def message_passing(g, mfunc, rfunc, afunc, efeats_redirected=None):
         is not None
     ):
         # invoke fused message passing
-        ndata = invoke_gspmm(g, mfunc, rfunc, efeats_redirected=efeats_redirected)
+        ndata = invoke_gspmm(
+            g, mfunc, rfunc, efeats_redirected=efeats_redirected
+        )
     else:
         # invoke message passing in two separate steps
         # message phase

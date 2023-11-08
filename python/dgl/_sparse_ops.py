@@ -202,15 +202,15 @@ def _gspmm(gidx, op, reduce_op, u, e, efeats_redirected_indices=None):
         if F.dtype(efeats_redirected_indices) != idtype:
             raise DGLError(
                 "When efeats_redirected is provided, the edata features should have type {} but type"
-                " {} is provided".format(idtype, F.dtype(efeats_redirected_indices))
+                " {} is provided".format(
+                    idtype, F.dtype(efeats_redirected_indices)
+                )
             )
 
         if efeats_redirected_indices.ndim != 1:
             raise DGLError(
                 "When efeats_redirected is provided, the edata features should have ndim=1, i.e, a scalar index for each edge"
             )
-    else:
-        efeats_redirected_indices = None
     use_u = op != "copy_rhs"
     use_e = op != "copy_lhs"
     if use_u and use_e:
@@ -230,8 +230,13 @@ def _gspmm(gidx, op, reduce_op, u, e, efeats_redirected_indices=None):
         if F.ndim(e) == 1:
             e = F.unsqueeze(e, -1)
             expand_e = True
-        if efeats_redirected_indices is not None and F.ndim(efeats_redirected_indices) == 1:
-            efeats_redirected_indices = F.unsqueeze(efeats_redirected_indices, -1)
+        if (
+            efeats_redirected_indices is not None
+            and F.ndim(efeats_redirected_indices) == 1
+        ):
+            efeats_redirected_indices = F.unsqueeze(
+                efeats_redirected_indices, -1
+            )
 
     ctx = F.context(u) if use_u else F.context(e)
     dtype = F.dtype(u) if use_u else F.dtype(e)

@@ -88,7 +88,7 @@ def gspmm(g, op, reduce_op, lhs_data, rhs_data, efeats_redirected=None):
             "sum" if reduce_op == "mean" else reduce_op,
             lhs_data,
             rhs_data,
-            efeats_redirected_indices=efeats_redirected_indices
+            efeats_redirected_indices=efeats_redirected_indices,
         )
     else:
         # lhs_data or rhs_data is None only in unary functions like ``copy-u`` or ``copy_e``
@@ -185,7 +185,6 @@ def _gen_spmm_func(binary_op, reduce_op):
 
 
 def _gen_copy_reduce_func(binary_op, reduce_op):
-
     name = "{}_{}".format(binary_op, reduce_op)
     binary_str = {
         "copy_u": "It copies node feature to edge as the message.",
@@ -220,9 +219,23 @@ def _gen_copy_reduce_func(binary_op, reduce_op):
 
     def func(g, x, efeats_redirected=None):
         if binary_op == "copy_u":
-            return gspmm(g, "copy_lhs", reduce_op, x, None, efeats_redirected=efeats_redirected)
+            return gspmm(
+                g,
+                "copy_lhs",
+                reduce_op,
+                x,
+                None,
+                efeats_redirected=efeats_redirected,
+            )
         else:
-            return gspmm(g, "copy_rhs", reduce_op, None, x, efeats_redirected=efeats_redirected)
+            return gspmm(
+                g,
+                "copy_rhs",
+                reduce_op,
+                None,
+                x,
+                efeats_redirected=efeats_redirected,
+            )
 
     func.__name__ = name
     func.__doc__ = docstring(binary_op)

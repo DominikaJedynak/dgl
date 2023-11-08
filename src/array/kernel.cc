@@ -19,7 +19,8 @@ namespace {}  // namespace
 /** @brief Generalized Sparse Matrix-Matrix Multiplication. */
 void SpMM(
     const std::string& op, const std::string& reduce, HeteroGraphPtr graph,
-    NDArray ufeat, NDArray efeat, NDArray out, NDArray E_Redir, std::vector<NDArray> out_aux) {
+    NDArray ufeat, NDArray efeat, NDArray out, NDArray E_Redir,
+    std::vector<NDArray> out_aux) {
   // TODO(zihao): format tuning
   SparseFormat format = graph->SelectFormat(0, CSC_CODE);
   const auto& bcast = CalcBcastOff(op, ufeat, efeat);
@@ -29,8 +30,8 @@ void SpMM(
       ATEN_FLOAT_TYPE_SWITCH_16BITS(out->dtype, Dtype, XPU, "Feature data", {
         if (format == SparseFormat::kCSC) {
           SpMMCsr<XPU, IdType, Dtype>(
-              op, reduce, bcast, graph->GetCSCMatrix(0), ufeat, efeat, out, E_Redir,
-              out_aux);
+              op, reduce, bcast, graph->GetCSCMatrix(0), ufeat, efeat, out,
+              E_Redir, out_aux);
         } else if (format == SparseFormat::kCOO) {
           SpMMCoo<XPU, IdType, Dtype>(
               op, reduce, bcast, graph->GetCOOMatrix(0), ufeat, efeat, out,
@@ -482,31 +483,31 @@ DGL_REGISTER_GLOBAL("sparse._CAPI_DGLKernelSpMM")
       NDArray ArgU = args[7];
       NDArray ArgE = args[8];
       CheckCtx(
-               graph->Context(), {U, E, V, E_Redir,ArgU, ArgE},
-               {"U_data", "E_data", "out", "E_Redir", "Arg_U", "Arg_E"});
+          graph->Context(), {U, E, V, E_Redir, ArgU, ArgE},
+          {"U_data", "E_data", "out", "E_Redir", "Arg_U", "Arg_E"});
       CheckContiguous(
-                      {U, E, V, E_Redir,ArgU, ArgE},
-                      {"U_data", "E_data", "out", "E_Redir", "Arg_U", "Arg_E"});
+          {U, E, V, E_Redir, ArgU, ArgE},
+          {"U_data", "E_data", "out", "E_Redir", "Arg_U", "Arg_E"});
       CHECK_EQ(graph->NumEdgeTypes(), 1);
       auto pair =
           graph->meta_graph()->FindEdge(0);  // only one etype in the graph.
       const dgl_type_t src_vtype = pair.first;
       const dgl_type_t dst_vtype = pair.second;
 
-      if(aten::IsNullArray(E_Redir))
-          CheckShape(
-                     {graph->NumVertices(src_vtype), graph->NumEdges(0),
-                      graph->NumVertices(dst_vtype)},
-                     {0, 1, 2, 2, 2}, {U, E, V, ArgU, ArgE},
-                     {"U_data", "E_data", "out", "Arg_U", "Arg_E"});
+      if (aten::IsNullArray(E_Redir))
+        CheckShape(
+            {graph->NumVertices(src_vtype), graph->NumEdges(0),
+             graph->NumVertices(dst_vtype)},
+            {0, 1, 2, 2, 2}, {U, E, V, ArgU, ArgE},
+            {"U_data", "E_data", "out", "Arg_U", "Arg_E"});
       else
-          CheckShape(
-                     {graph->NumVertices(src_vtype), graph->NumEdges(0),
-                      graph->NumVertices(dst_vtype)},
-                     {0, 1, 2, 2, 2}, {U, E_Redir, V, ArgU, ArgE},
-                     {"U_data", "E_redirection_data", "out", "Arg_U", "Arg_E"});
+        CheckShape(
+            {graph->NumVertices(src_vtype), graph->NumEdges(0),
+             graph->NumVertices(dst_vtype)},
+            {0, 1, 2, 2, 2}, {U, E_Redir, V, ArgU, ArgE},
+            {"U_data", "E_redirection_data", "out", "Arg_U", "Arg_E"});
 
-      SpMM(op, reduce_op, graph.sptr(), U, E, V, E_Redir,{ArgU, ArgE});
+      SpMM(op, reduce_op, graph.sptr(), U, E, V, E_Redir, {ArgU, ArgE});
     });
 
 DGL_REGISTER_GLOBAL("sparse._CAPI_DGLKernelGATHERMM")
