@@ -132,7 +132,8 @@ void SpMMSumCsr(
   const IdType* edges = csr.data.Ptr<IdType>();
   const DType* X = ufeat.Ptr<DType>();
   const DType* W = efeat.Ptr<DType>();
-  const IdType* E_Indices = IsNullArray(E_Redir) ? nullptr :  E_Redir.Ptr<IdType>();
+  const IdType* E_Indices =
+      IsNullArray(E_Redir) ? nullptr : E_Redir.Ptr<IdType>();
   DType* O = out.Ptr<DType>();
   CHECK_NOTNULL(indptr);
   CHECK_NOTNULL(O);
@@ -252,7 +253,8 @@ void SpMMCmpCsr(
       has_idx ? static_cast<IdType*>(csr.data->data) : nullptr;
   const DType* X = Op::use_lhs ? static_cast<DType*>(ufeat->data) : nullptr;
   const DType* W = Op::use_rhs ? static_cast<DType*>(efeat->data) : nullptr;
-  const IdType* E_indices = IsNullArray(E_Redir) ? nullptr : E_Redir.Ptr<IdType>();
+  const IdType* E_indices =
+      IsNullArray(E_Redir) ? nullptr : E_Redir.Ptr<IdType>();
   const int64_t dim = bcast.out_len, lhs_dim = bcast.lhs_len,
                 rhs_dim = bcast.rhs_len;
   DType* O = static_cast<DType*>(out->data);

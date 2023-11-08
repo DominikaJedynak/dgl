@@ -14,12 +14,13 @@ namespace aten {
 template <int XPU, typename IdType, typename DType>
 void SpMMCsr(
     const std::string& op, const std::string& reduce, const BcastOff& bcast,
-    const CSRMatrix& csr, NDArray ufeat, NDArray efeat, NDArray out, NDArray E_Redir,
-    std::vector<NDArray> out_aux) {
+    const CSRMatrix& csr, NDArray ufeat, NDArray efeat, NDArray out,
+    NDArray E_Redir, std::vector<NDArray> out_aux) {
   const int64_t dim = bcast.out_len;
   if (reduce == "sum") {
     SWITCH_OP(op, Op, {
-        cpu::SpMMSumCsr<IdType, DType, Op>(bcast, csr, ufeat, efeat, out, E_Redir);
+      cpu::SpMMSumCsr<IdType, DType, Op>(
+          bcast, csr, ufeat, efeat, out, E_Redir);
     });
   } else if (reduce == "max" || reduce == "min") {
     SWITCH_OP(op, Op, {
@@ -64,7 +65,8 @@ void SpMMCsrHetero(
         NDArray efeat =
             (vec_efeat.size() == 0) ? NullArray() : vec_efeat[etype];
         NDArray out = (*vec_out)[dst_id];
-        cpu::SpMMSumCsr<IdType, DType, Op>(bcast, csr, ufeat, efeat, out, NullArray());
+        cpu::SpMMSumCsr<IdType, DType, Op>(
+            bcast, csr, ufeat, efeat, out, NullArray());
       }
     });
   } else if (reduce == "max" || reduce == "min") {
@@ -126,28 +128,28 @@ void SpMMCsrHetero(
 
 template void SpMMCsr<kDGLCPU, int32_t, BFloat16>(
     const std::string& op, const std::string& reduce, const BcastOff& bcast,
-    const CSRMatrix& csr, NDArray ufeat, NDArray efeat, NDArray out, NDArray E_Redir,
-    std::vector<NDArray> out_aux);
+    const CSRMatrix& csr, NDArray ufeat, NDArray efeat, NDArray out,
+    NDArray E_Redir, std::vector<NDArray> out_aux);
 template void SpMMCsr<kDGLCPU, int64_t, BFloat16>(
     const std::string& op, const std::string& reduce, const BcastOff& bcast,
-    const CSRMatrix& csr, NDArray ufeat, NDArray efeat, NDArray out, NDArray E_Redir,
-    std::vector<NDArray> out_aux);
+    const CSRMatrix& csr, NDArray ufeat, NDArray efeat, NDArray out,
+    NDArray E_Redir, std::vector<NDArray> out_aux);
 template void SpMMCsr<kDGLCPU, int32_t, float>(
     const std::string& op, const std::string& reduce, const BcastOff& bcast,
-    const CSRMatrix& csr, NDArray ufeat, NDArray efeat, NDArray out, NDArray E_Redir,
-    std::vector<NDArray> out_aux);
+    const CSRMatrix& csr, NDArray ufeat, NDArray efeat, NDArray out,
+    NDArray E_Redir, std::vector<NDArray> out_aux);
 template void SpMMCsr<kDGLCPU, int64_t, float>(
     const std::string& op, const std::string& reduce, const BcastOff& bcast,
-    const CSRMatrix& csr, NDArray ufeat, NDArray efeat, NDArray out, NDArray E_Redir,
-    std::vector<NDArray> out_aux);
+    const CSRMatrix& csr, NDArray ufeat, NDArray efeat, NDArray out,
+    NDArray E_Redir, std::vector<NDArray> out_aux);
 template void SpMMCsr<kDGLCPU, int32_t, double>(
     const std::string& op, const std::string& reduce, const BcastOff& bcast,
-    const CSRMatrix& csr, NDArray ufeat, NDArray efeat, NDArray out, NDArray E_Redir,
-    std::vector<NDArray> out_aux);
+    const CSRMatrix& csr, NDArray ufeat, NDArray efeat, NDArray out,
+    NDArray E_Redir, std::vector<NDArray> out_aux);
 template void SpMMCsr<kDGLCPU, int64_t, double>(
     const std::string& op, const std::string& reduce, const BcastOff& bcast,
-    const CSRMatrix& csr, NDArray ufeat, NDArray efeat, NDArray out, NDArray E_Redir,
-    std::vector<NDArray> out_aux);
+    const CSRMatrix& csr, NDArray ufeat, NDArray efeat, NDArray out,
+    NDArray E_Redir, std::vector<NDArray> out_aux);
 
 template void SpMMCsrHetero<kDGLCPU, int32_t, BFloat16>(
     const std::string& op, const std::string& reduce, const BcastOff& bcast,
