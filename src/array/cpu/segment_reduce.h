@@ -94,8 +94,8 @@ void ScatterAdd(NDArray feat, NDArray idx, NDArray out) {
   const IdType* idx_data = idx.Ptr<IdType>();
   DType* out_data = out.Ptr<DType>();
 #pragma omp parallel for
-  for (int i = 0; i < n; ++i) {
-    const int write_row = idx_data[i];
+  for (IdType i = 0; i < n; ++i) {
+    const IdType write_row = idx_data[i];
     for (int k = 0; k < dim; ++k) {
 #pragma omp atomic
       out_data[write_row * dim + k] += feat_data[i * dim + k];
