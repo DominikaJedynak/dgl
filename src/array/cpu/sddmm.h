@@ -31,8 +31,9 @@ template <
     int RhsTarget = 2>
 void SDDMMCsr(
     const BcastOff& bcast, const CSRMatrix& csr, NDArray lhs, NDArray rhs,
-    NDArray out) {
+    NDArray out, const IdType* E_indices) {
   const bool has_idx = !IsNullArray(csr.data);
+  const bool has_edge_redirection = (E_indices != nullptr);
   const IdType* indptr = csr.indptr.Ptr<IdType>();
   const IdType* indices = csr.indices.Ptr<IdType>();
   const IdType* edges = csr.data.Ptr<IdType>();
@@ -46,7 +47,8 @@ void SDDMMCsr(
       const IdType row_start = indptr[rid], row_end = indptr[rid + 1];
       for (IdType j = row_start; j < row_end; ++j) {
         const IdType cid = indices[j];
-        const IdType eid = has_idx ? edges[j] : j;
+        const IdType eid_ = has_idx ? edges[j] : j;
+        const IdType eid = has_edge_redirection ? E_indices[eid_] : eid_;
         DType* out_off = O + eid * dim;
         for (int64_t k = 0; k < dim; ++k) {
           const int64_t lhs_add = bcast.use_bcast ? bcast.lhs_offset[k] : k;
@@ -81,10 +83,12 @@ void SDDMMCsr(
 template <
     typename IdType, typename DType, typename Op, int LhsTarget = 0,
     int RhsTarget = 2>
-void SDDMMCoo(
+typename std::enable_if<!std::is_same<DType, BFloat16>::value, void>::type
+SDDMMCoo(
     const BcastOff& bcast, const COOMatrix& coo, NDArray lhs, NDArray rhs,
-    NDArray out) {
+    NDArray out, const IdType* E_indices) {
   const bool has_idx = !IsNullArray(coo.data);
+  const bool has_edge_redirection = (E_indices != nullptr);
   const IdType* row = coo.row.Ptr<IdType>();
   const IdType* col = coo.col.Ptr<IdType>();
   const IdType* edges = coo.data.Ptr<IdType>();
@@ -93,27 +97,47 @@ void SDDMMCoo(
   const int64_t dim = bcast.out_len, lhs_dim = bcast.lhs_len,
                 rhs_dim = bcast.rhs_len, reduce_size = bcast.reduce_size;
   DType* O = out.Ptr<DType>();
-#pragma omp parallel for
-  for (int64_t i = 0; i < coo.row->shape[0]; ++i) {
+  runtime::parallel_for(0, coo.row->shape[0], [&](int64_t b, int64_t e) {
+  for (int64_t i = b; i < e; ++i) {
     const IdType rid = row[i];
     const IdType cid = col[i];
-    const IdType eid = has_idx ? edges[i] : i;
+    const IdType eid_ = has_idx ? edges[i] : i;
+    const IdType eid = has_edge_redirection ? E_indices[eid_] : eid_;
     DType* out_off = O + eid * dim;
     for (int64_t k = 0; k < dim; ++k) {
       const int64_t lhs_add = bcast.use_bcast ? bcast.lhs_offset[k] : k;
       const int64_t rhs_add = bcast.use_bcast ? bcast.rhs_offset[k] : k;
       const DType* lhs_off =
-          Op::use_lhs ? X + Selector<LhsTarget>::Call(rid, eid, cid) * lhs_dim +
-                            lhs_add * reduce_size
+          Op::use_lhs ? X + Selector<LhsTarget>::Call(rid, eid_, cid) * lhs_dim +
+                            lhs_add * reduce_size // both with underscore?
                       : nullptr;
       const DType* rhs_off =
-          Op::use_rhs ? Y + Selector<RhsTarget>::Call(rid, eid, cid) * rhs_dim +
+          Op::use_rhs ? Y + Selector<RhsTarget>::Call(rid, eid_, cid) * rhs_dim +
                             rhs_add * reduce_size
                       : nullptr;
-      out_off[k] = Op::Call(lhs_off, rhs_off, bcast.reduce_size);
+      if(has_edge_redirection){
+        const DType val = Op::Call(lhs_off, rhs_off, bcast.reduce_size);
+        if (val != 0) {
+          out_off[k] += val;
+        }
+      }
+      else{
+        out_off[k] = Op::Call(lhs_off, rhs_off, bcast.reduce_size);
+      }
     }
   }
+    });
 }
+
+template <
+    typename IdType, typename DType, typename Op, int LhsTarget = 0,
+    int RhsTarget = 2>
+typename std::enable_if<std::is_same<DType, BFloat16>::value, void>::type
+SDDMMCoo(
+    const BcastOff& bcast, const COOMatrix& coo, NDArray lhs, NDArray rhs,
+    NDArray out, const IdType* E_indices) {
+      LOG(FATAL) << "Unsupported CPU kernel for SDDMMCoo for BF16.";
+    }
 
 namespace op {
 
