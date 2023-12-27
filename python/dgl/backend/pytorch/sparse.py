@@ -238,10 +238,10 @@ class GSpMM(th.autograd.Function):
             dX = None
         if op != "copy_lhs" and ctx.needs_input_grad[4]:
             if reduce_op == "sum":
-                if op == "mul" and reduce_last:
-                    dY = gsddmm(gidx, "dot", X, dZ)
+                if op == "mul" and reduce_last: # to check
+                    dY = gsddmm(gidx, "dot", X, dZ, 'u', 'v', efeats_redirected_indices)
                 elif op == "mul":
-                    dY = gsddmm(gidx, "mul", X, dZ)
+                    dY = gsddmm(gidx, "mul", X, dZ, 'u', 'v', efeats_redirected_indices)
                 elif op in ["add", "copy_rhs"]:
                     dY = gsddmm(gidx, "copy_rhs", None, dZ)
             else:  # max/min
@@ -257,15 +257,6 @@ class GSpMM(th.autograd.Function):
         else:  # Y has no gradient
             dY = None
 
-        # We need to accumulate gradient depending on the edge type if redirection is present.
-        if efeats_redirected_indices is not None:
-            print(gidx.number_of_etypes())
-            print(th.max(efeats_redirected_indices))
-            dY = _scatter_add(
-                dY,
-                efeats_redirected_indices,
-                th.max(efeats_redirected_indices) + 1,
-            )
         return None, None, None, dX, dY, None, None, None
 
 
@@ -463,8 +454,8 @@ def sddmm_cache_Y(op, req_grad_X, req_grad_Y):
 
 class GSDDMM(th.autograd.Function):
     @staticmethod
-    def forward(ctx, gidx, op, X, Y, lhs_target, rhs_target):
-        out = _gsddmm(gidx, op, X, Y, lhs_target, rhs_target)
+    def forward(ctx, gidx, op, X, Y, lhs_target, rhs_target, efeats_redirected_indices):
+        out = _gsddmm(gidx, op, X, Y, lhs_target, rhs_target, efeats_redirected_indices)
         X_shape = X.shape if X is not None else None
         Y_shape = Y.shape if Y is not None else None
         ctx.backward_cache = gidx, op, lhs_target, rhs_target, X_shape, Y_shape
@@ -474,7 +465,7 @@ class GSDDMM(th.autograd.Function):
             X = None
         if not sddmm_cache_Y(op, req_grad_X, req_grad_Y):
             Y = None
-        ctx.save_for_backward(X, Y)
+        ctx.save_for_backward(X, Y) # efeats: not needed to save for backward cause used only for backward?
         return out
 
     @staticmethod
@@ -1057,7 +1048,7 @@ def gspmm(
         return GSpMM.apply(*args)
 
 
-def gsddmm(gidx, op, lhs_data, rhs_data, lhs_target="u", rhs_target="v"):
+def gsddmm(gidx, op, lhs_data, rhs_data, lhs_target="u", rhs_target="v", efeats_redirected_indices=None):
     if op == "sub":
         op = "add"
         rhs_data = -rhs_data
@@ -1065,7 +1056,7 @@ def gsddmm(gidx, op, lhs_data, rhs_data, lhs_target="u", rhs_target="v"):
         op = "mul"
         rhs_data = 1.0 / rhs_data
     args = _cast_if_autocast_enabled(
-        gidx, op, lhs_data, rhs_data, lhs_target, rhs_target
+        gidx, op, lhs_data, rhs_data, lhs_target, rhs_target, efeats_redirected_indices
     )
     with _disable_autocast_if_enabled():
         return GSDDMM.apply(*args)

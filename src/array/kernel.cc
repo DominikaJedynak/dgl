@@ -224,7 +224,7 @@ void SpMMHetero(
 /** @brief Generalized Sampled Dense-Dense Matrix Multiplication. */
 void SDDMM(
     const std::string& op, HeteroGraphPtr graph, NDArray lhs, NDArray rhs,
-    NDArray out, int lhs_target, int rhs_target) {
+    NDArray out, NDArray E_Redir, int lhs_target, int rhs_target) {
   // TODO(zihao): format tuning
   SparseFormat format = graph->SelectFormat(0, COO_CODE);
   const auto& bcast = CalcBcastOff(op, lhs, rhs);
@@ -234,11 +234,11 @@ void SDDMM(
       ATEN_FLOAT_TYPE_SWITCH_16BITS(out->dtype, Dtype, XPU, "Feature data", {
         if (format == SparseFormat::kCSR) {
           SDDMMCsr<XPU, IdType, Dtype>(
-              op, bcast, graph->GetCSRMatrix(0), lhs, rhs, out, lhs_target,
+              op, bcast, graph->GetCSRMatrix(0), lhs, rhs, out, E_Redir, lhs_target,
               rhs_target);
         } else if (format == SparseFormat::kCOO) {
           SDDMMCoo<XPU, IdType, Dtype>(
-              op, bcast, graph->GetCOOMatrix(0), lhs, rhs, out, lhs_target,
+              op, bcast, graph->GetCOOMatrix(0), lhs, rhs, out, E_Redir, lhs_target,
               rhs_target);
         } else {
           LOG(FATAL) << "SDDMM only supports CSR and COO formats";
@@ -619,22 +619,23 @@ DGL_REGISTER_GLOBAL("sparse._CAPI_DGLKernelSDDMM")
       NDArray lhs = args[2];
       NDArray rhs = args[3];
       NDArray out = args[4];
-      int lhs_target = args[5];
-      int rhs_target = args[6];
-      CheckCtx(graph->Context(), {lhs, rhs, out}, {"lhs", "rhs", "out"});
-      CheckContiguous({lhs, rhs, out}, {"lhs", "rhs", "out"});
+      NDArray E_Redir = args[5];
+      int lhs_target = args[6];
+      int rhs_target = args[7];
+      CheckCtx(graph->Context(), {lhs, rhs, out, E_Redir}, {"lhs", "rhs", "out", "E_Redir"});
+      CheckContiguous({lhs, rhs, out, E_Redir}, {"lhs", "rhs", "out", "E_Redir"});
       CHECK_EQ(graph->NumEdgeTypes(), 1);
       auto pair =
           graph->meta_graph()->FindEdge(0);  // only one etype in the graph.
       const dgl_type_t src_vtype = pair.first;
       const dgl_type_t dst_vtype = pair.second;
 
-      CheckShape(
+      /* CheckShape(
           {graph->NumVertices(src_vtype), graph->NumEdges(0),
            graph->NumVertices(dst_vtype)},
           {lhs_target, rhs_target, 1}, {lhs, rhs, out},
-          {"U_data", "E_data", "V_data"});
-      SDDMM(op, graph.sptr(), lhs, rhs, out, lhs_target, rhs_target);
+          {"U_data", "E_data", "V_data"}); */
+      SDDMM(op, graph.sptr(), lhs, rhs, out, E_Redir, lhs_target, rhs_target);
     });
 
 DGL_REGISTER_GLOBAL("sparse._CAPI_DGLKernelSDDMMHetero")

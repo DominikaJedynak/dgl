@@ -5,6 +5,7 @@ from __future__ import absolute_import
 from . import backend as F, ndarray as nd
 from ._ffi.function import _init_api
 from .base import DGLError
+import torch as th
 
 
 def infer_broadcast_shape(op, shp1, shp2):
@@ -501,7 +502,7 @@ def _gather_mm_scatter(A, B, out, idx_a=None, idx_b=None, idx_c=None):
     return out
 
 
-def _gsddmm(gidx, op, lhs, rhs, lhs_target="u", rhs_target="v"):
+def _gsddmm(gidx, op, lhs, rhs, lhs_target="u", rhs_target="v", efeats_redirected_indices=None):
     r"""Generalized Sampled-Dense-Dense Matrix Multiplication interface. It
     takes the result of :attr:`op` on source node feature and destination node
     feature, leads to a feature on edge.
@@ -543,6 +544,22 @@ def _gsddmm(gidx, op, lhs, rhs, lhs_target="u", rhs_target="v"):
     """
     if gidx.number_of_etypes() != 1:
         raise DGLError("We only support gsddmm on graph with one edge type")
+
+    idtype = getattr(F, gidx.dtype)
+    if efeats_redirected_indices is not None:
+        if F.dtype(efeats_redirected_indices) != idtype:
+            raise DGLError(
+                "When efeats_redirected is provided, the edata features should have type {} but type"
+                " {} is provided".format(
+                    idtype, F.dtype(efeats_redirected_indices)
+                )
+            )
+
+        if efeats_redirected_indices.ndim != 1:
+            raise DGLError(
+                "When efeats_redirected is provided, the edata features should have ndim=1, i.e, a scalar index for each edge"
+            )
+
     use_lhs = op != "copy_rhs"
     use_rhs = op != "copy_lhs"
     if use_lhs and use_rhs:
@@ -568,7 +585,8 @@ def _gsddmm(gidx, op, lhs, rhs, lhs_target="u", rhs_target="v"):
     dtype = F.dtype(lhs) if use_lhs else F.dtype(rhs)
     lhs_shp = F.shape(lhs) if use_lhs else (0,)
     rhs_shp = F.shape(rhs) if use_rhs else (0,)
-    out_shp = (gidx.num_edges(0),) + infer_broadcast_shape(
+    out_dim = th.max(efeats_redirected_indices) + 1 if efeats_redirected_indices != None else gidx.num_edges(0)
+    out_shp = (out_dim,) + infer_broadcast_shape(
         op, lhs_shp[1:], rhs_shp[1:]
     )
     out = F.empty(out_shp, dtype, ctx)
@@ -579,6 +597,7 @@ def _gsddmm(gidx, op, lhs, rhs, lhs_target="u", rhs_target="v"):
             to_dgl_nd(lhs if use_lhs else None),
             to_dgl_nd(rhs if use_rhs else None),
             to_dgl_nd_for_write(out),
+            to_dgl_nd(efeats_redirected_indices),
             lhs_target,
             rhs_target,
         )
