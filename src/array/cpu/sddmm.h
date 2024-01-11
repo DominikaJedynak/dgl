@@ -118,6 +118,7 @@ SDDMMCoo(
       if(has_edge_redirection){
         const DType val = Op::Call(lhs_off, rhs_off, bcast.reduce_size);
         if (val != 0) {
+#pragma omp atomic
           out_off[k] += val;
         }
       }
