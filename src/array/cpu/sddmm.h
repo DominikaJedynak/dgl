@@ -108,11 +108,11 @@ SDDMMCoo(
       const int64_t lhs_add = bcast.use_bcast ? bcast.lhs_offset[k] : k;
       const int64_t rhs_add = bcast.use_bcast ? bcast.rhs_offset[k] : k;
       const DType* lhs_off =
-          Op::use_lhs ? X + Selector<LhsTarget>::Call(rid, eid_, cid) * lhs_dim +
+          Op::use_lhs ? X + Selector<LhsTarget>::Call(rid, eid, cid) * lhs_dim +
                             lhs_add * reduce_size
                       : nullptr;
       const DType* rhs_off =
-          Op::use_rhs ? Y + Selector<RhsTarget>::Call(rid, eid_, cid) * rhs_dim +
+          Op::use_rhs ? Y + Selector<RhsTarget>::Call(rid, eid, cid) * rhs_dim +
                             rhs_add * reduce_size
                       : nullptr;
       if(has_edge_redirection){
