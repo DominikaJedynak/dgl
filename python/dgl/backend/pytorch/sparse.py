@@ -130,9 +130,9 @@ def spmm_cache_argY(op, reduce_op, req_grad_X, req_grad_Y):
 
 def spmm_cache_redirection(op, reduce_op, req_grad_X, req_grad_Y):
     """Rules to identify whether to cache efeats_redirected_indices in SpMM forward stage."""
-    if op == "copy_lhs" or reduce_op in ["min", "max"]:
-        return False
-    return True
+    if op == "mul" and reduce_op == "sum":
+        return True
+    return False
 
 
 class empty_context:
