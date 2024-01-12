@@ -238,7 +238,7 @@ class GSpMM(th.autograd.Function):
             dX = None
         if op != "copy_lhs" and ctx.needs_input_grad[4]:
             if reduce_op == "sum":
-                if op == "mul" and reduce_last: # to check
+                if op == "mul" and reduce_last:
                     dY = gsddmm(gidx, "dot", X, dZ, 'u', 'v', efeats_redirected_indices)
                 elif op == "mul":
                     dY = gsddmm(gidx, "mul", X, dZ, 'u', 'v', efeats_redirected_indices)
@@ -465,7 +465,7 @@ class GSDDMM(th.autograd.Function):
             X = None
         if not sddmm_cache_Y(op, req_grad_X, req_grad_Y):
             Y = None
-        ctx.save_for_backward(X, Y) # efeats: not needed to save for backward cause used only for backward?
+        ctx.save_for_backward(X, Y)
         return out
 
     @staticmethod
