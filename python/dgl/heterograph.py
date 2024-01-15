@@ -5127,6 +5127,11 @@ class DGLGraph(object):
                 ndata[key] = F.replace_inf_with_zero(ndata[key])
             self._set_n_repr(dtid, ALL, ndata)
         else:  # heterogeneous graph with number of relation types > 1
+            if efeats_redirected:
+                raise DGLError("There is no support for using efeats_redirected "
+                               "argument with graphs stored as dgl.heterograph. "
+                               "Try using dgl.graph with edge types for subsequent "
+                               "edges stored under edata['etype'].")
             if not core.is_builtin(message_func) or not core.is_builtin(
                 reduce_func
             ):
@@ -5143,8 +5148,7 @@ class DGLGraph(object):
                 )
             g = self
             all_out = core.message_passing(
-                g, message_func, reduce_func, apply_node_func, efeats_redirected
-            )
+                g, message_func, reduce_func, apply_node_func)
             key = list(all_out.keys())[0]
             out_tensor_tuples = all_out[key]
 

@@ -24,6 +24,10 @@ void SpMM(
   // TODO(zihao): format tuning
   SparseFormat format = graph->SelectFormat(0, CSC_CODE);
   const auto& bcast = CalcBcastOff(op, ufeat, efeat);
+  if (format == SparseFormat::kCOO && E_Redir.defined()){
+    LOG(FATAL) << "Usage of efeats_redirected argument is not supported for "
+     "SpMM operations on COO format.";
+  }
 
   ATEN_XPU_SWITCH_CUDA(graph->Context().device_type, XPU, "SpMM", {
     ATEN_ID_TYPE_SWITCH(graph->DataType(), IdType, {

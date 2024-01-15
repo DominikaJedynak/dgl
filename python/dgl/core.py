@@ -406,6 +406,10 @@ def message_passing(g, mfunc, rfunc, afunc, efeats_redirected=None):
             g, mfunc, rfunc, efeats_redirected=efeats_redirected
         )
     else:
+        if efeats_redirected:
+            raise DGLError("There is no support for using efeats_redirected "
+                           "argument with this configuration of message and "
+                           "reduce functions. Try functions supported by SpMM.")
         # invoke message passing in two separate steps
         # message phase
         if is_builtin(mfunc):
