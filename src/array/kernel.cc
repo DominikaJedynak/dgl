@@ -231,6 +231,10 @@ void SDDMM(
     NDArray out, NDArray E_Redir, int lhs_target, int rhs_target) {
   // TODO(zihao): format tuning
   SparseFormat format = graph->SelectFormat(0, COO_CODE);
+  if (format == SparseFormat::kCSR && E_Redir.defined()){
+    LOG(FATAL) << "Usage of efeats_redirected argument is not supported for "
+     "SDDMM operations on CSR format.";
+  }
   const auto& bcast = CalcBcastOff(op, lhs, rhs);
 
   ATEN_XPU_SWITCH_CUDA(graph->Context().device_type, XPU, "SDDMM", {
@@ -238,7 +242,7 @@ void SDDMM(
       ATEN_FLOAT_TYPE_SWITCH_16BITS(out->dtype, Dtype, XPU, "Feature data", {
         if (format == SparseFormat::kCSR) {
           SDDMMCsr<XPU, IdType, Dtype>(
-              op, bcast, graph->GetCSRMatrix(0), lhs, rhs, out, E_Redir, lhs_target,
+              op, bcast, graph->GetCSRMatrix(0), lhs, rhs, out, lhs_target,
               rhs_target);
         } else if (format == SparseFormat::kCOO) {
           SDDMMCoo<XPU, IdType, Dtype>(
@@ -634,11 +638,19 @@ DGL_REGISTER_GLOBAL("sparse._CAPI_DGLKernelSDDMM")
       const dgl_type_t src_vtype = pair.first;
       const dgl_type_t dst_vtype = pair.second;
 
-      /* CheckShape(
-          {graph->NumVertices(src_vtype), graph->NumEdges(0),
-           graph->NumVertices(dst_vtype)},
-          {lhs_target, rhs_target, 1}, {lhs, rhs, out},
-          {"U_data", "E_data", "V_data"}); */
+     if (aten::IsNullArray(E_Redir))
+        CheckShape(
+            {graph->NumVertices(src_vtype), graph->NumEdges(0),
+            graph->NumVertices(dst_vtype)},
+            {lhs_target, rhs_target, 1}, {lhs, rhs, out},
+            {"U_data", "E_data", "V_data"});
+      else
+        CheckShape(
+            {graph->NumVertices(src_vtype), graph->NumEdges(0),
+            graph->NumVertices(dst_vtype)},
+            {lhs_target, rhs_target, 1}, {lhs, rhs, E_Redir},
+            {"U_data", "E_data", "E_redirection_data"});
+
       SDDMM(op, graph.sptr(), lhs, rhs, out, E_Redir, lhs_target, rhs_target);
     });
 

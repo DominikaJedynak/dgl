@@ -578,6 +578,13 @@ def _gsddmm(gidx, op, lhs, rhs, lhs_target="u", rhs_target="v", efeats_redirecte
         if F.ndim(rhs) == 1:
             rhs = F.unsqueeze(rhs, -1)
             expand_rhs = True
+        if (
+            efeats_redirected_indices is not None
+            and F.ndim(efeats_redirected_indices) == 1
+        ):
+            efeats_redirected_indices = F.unsqueeze(
+                efeats_redirected_indices, -1
+            )
     lhs_target = target_mapping[lhs_target]
     rhs_target = target_mapping[rhs_target]
 

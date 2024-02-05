@@ -31,9 +31,8 @@ template <
     int RhsTarget = 2>
 void SDDMMCsr(
     const BcastOff& bcast, const CSRMatrix& csr, NDArray lhs, NDArray rhs,
-    NDArray out, const IdType* E_indices) {
+    NDArray out) {
   const bool has_idx = !IsNullArray(csr.data);
-  const bool has_edge_redirection = (E_indices != nullptr);
   const IdType* indptr = csr.indptr.Ptr<IdType>();
   const IdType* indices = csr.indices.Ptr<IdType>();
   const IdType* edges = csr.data.Ptr<IdType>();
@@ -47,8 +46,7 @@ void SDDMMCsr(
       const IdType row_start = indptr[rid], row_end = indptr[rid + 1];
       for (IdType j = row_start; j < row_end; ++j) {
         const IdType cid = indices[j];
-        const IdType eid_ = has_idx ? edges[j] : j;
-        const IdType eid = has_edge_redirection ? E_indices[eid_] : eid_;
+        const IdType eid = has_idx ? edges[j] : j;
         DType* out_off = O + eid * dim;
         for (int64_t k = 0; k < dim; ++k) {
           const int64_t lhs_add = bcast.use_bcast ? bcast.lhs_offset[k] : k;
