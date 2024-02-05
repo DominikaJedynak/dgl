@@ -53,7 +53,7 @@ void SpMMCoo(
 template <int XPU, typename IdType, typename DType>
 void SDDMMCsr(
     const std::string& op, const BcastOff& bcast, const aten::CSRMatrix& csr,
-    NDArray lhs, NDArray rhs, NDArray out, NDArray E_Redir, int lhs_target, int rhs_target);
+    NDArray lhs, NDArray rhs, NDArray out, int lhs_target, int rhs_target);
 /**
 
  * @brief Generalized Sampled Dense-Dense Matrix Multiplication on Csr format

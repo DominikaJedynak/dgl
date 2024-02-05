@@ -46,11 +46,11 @@ namespace aten {
 template <int XPU, typename IdType, typename DType>
 void SDDMMCsr(
     const std::string& op, const BcastOff& bcast, const CSRMatrix& csr,
-    NDArray lhs, NDArray rhs, NDArray out, NDArray E_Redir, int lhs_target, int rhs_target) {
+    NDArray lhs, NDArray rhs, NDArray out, int lhs_target, int rhs_target) {
   SWITCH_OP(op, Op, {
     SWITCH_TARGET(lhs_target, rhs_target, LhsTarget, RhsTarget, {
       cpu::SDDMMCsr<IdType, DType, Op, LhsTarget, RhsTarget>(
-          bcast, csr, lhs, rhs, out, E_Redir.Ptr<IdType>());
+          bcast, csr, lhs, rhs, out);
     });
   });
 }
@@ -72,7 +72,7 @@ void SDDMMCsrHetero(
         NDArray rhs = vec_rhs[rhs_nid[etype]];
         NDArray out = vec_out[etype];
         cpu::SDDMMCsr<IdType, DType, Op, LhsTarget, RhsTarget>(
-            bcast, csr, lhs, rhs, out, nullptr);
+            bcast, csr, lhs, rhs, out);
       }
     });
   });
@@ -80,22 +80,22 @@ void SDDMMCsrHetero(
 
 template void SDDMMCsr<kDGLCPU, int32_t, BFloat16>(
     const std::string& op, const BcastOff& bcast, const CSRMatrix& csr,
-    NDArray lhs, NDArray rhs, NDArray out, NDArray E_Redir, int lhs_target, int rhs_target);
+    NDArray lhs, NDArray rhs, NDArray out, int lhs_target, int rhs_target);
 template void SDDMMCsr<kDGLCPU, int64_t, BFloat16>(
     const std::string& op, const BcastOff& bcast, const CSRMatrix& csr,
-    NDArray lhs, NDArray rhs, NDArray out, NDArray E_Redir, int lhs_target, int rhs_target);
+    NDArray lhs, NDArray rhs, NDArray out, int lhs_target, int rhs_target);
 template void SDDMMCsr<kDGLCPU, int32_t, float>(
     const std::string& op, const BcastOff& bcast, const CSRMatrix& csr,
-    NDArray lhs, NDArray rhs, NDArray out, NDArray E_Redir, int lhs_target, int rhs_target);
+    NDArray lhs, NDArray rhs, NDArray out, int lhs_target, int rhs_target);
 template void SDDMMCsr<kDGLCPU, int64_t, float>(
     const std::string& op, const BcastOff& bcast, const CSRMatrix& csr,
-    NDArray lhs, NDArray rhs, NDArray out, NDArray E_Redir, int lhs_target, int rhs_target);
+    NDArray lhs, NDArray rhs, NDArray out, int lhs_target, int rhs_target);
 template void SDDMMCsr<kDGLCPU, int32_t, double>(
     const std::string& op, const BcastOff& bcast, const CSRMatrix& csr,
-    NDArray lhs, NDArray rhs, NDArray out, NDArray E_Redir, int lhs_target, int rhs_target);
+    NDArray lhs, NDArray rhs, NDArray out, int lhs_target, int rhs_target);
 template void SDDMMCsr<kDGLCPU, int64_t, double>(
     const std::string& op, const BcastOff& bcast, const CSRMatrix& csr,
-    NDArray lhs, NDArray rhs, NDArray out, NDArray E_Redir, int lhs_target, int rhs_target);
+    NDArray lhs, NDArray rhs, NDArray out, int lhs_target, int rhs_target);
 
 template void SDDMMCsrHetero<kDGLCPU, int32_t, BFloat16>(
     const std::string& op, const BcastOff& bcast,
