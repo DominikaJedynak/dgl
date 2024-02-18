@@ -593,10 +593,13 @@ def _gsddmm(gidx, op, lhs, rhs, lhs_target="u", rhs_target="v", efeats_redirecte
     lhs_shp = F.shape(lhs) if use_lhs else (0,)
     rhs_shp = F.shape(rhs) if use_rhs else (0,)
     out_dim = th.max(efeats_redirected_indices) + 1 if efeats_redirected_indices != None else gidx.num_edges(0)
-    out_shp = (out_dim,) + infer_broadcast_shape(
+    out_shp = (out_dim.item(),) + infer_broadcast_shape(
         op, lhs_shp[1:], rhs_shp[1:]
     )
-    out = F.empty(out_shp, dtype, ctx)
+    if efeats_redirected_indices != None:
+        out = F.zeros(out_shp, dtype, ctx)
+    else:
+        out = F.empty(out_shp, dtype, ctx)
     if gidx.num_edges(0) > 0:
         _CAPI_DGLKernelSDDMM(
             gidx,
