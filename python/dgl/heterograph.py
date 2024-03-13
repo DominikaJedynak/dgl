@@ -5015,13 +5015,81 @@ class DGLGraph(object):
             edges, message_func, reduce_func, apply_node_func, etype=etype
         )
 
-    def update_all(
+    def _update_all(
         self,
         message_func,
         reduce_func,
         apply_node_func=None,
         etype=None,
-        efeats_redirected=None,
+        relation_feats=None,
+    ):
+        """
+        Internal function implementing backend for update_all and update_all_relationwise functions.
+        """
+
+        # Graph with one relation type
+        if self._graph.number_of_etypes() == 1 or etype is not None:
+            etid = self.get_etype_id(etype)
+            etype = self.canonical_etypes[etid]
+            _, dtid = self._graph.metagraph.find_edge(etid)
+            g = self if etype is None else self[etype]
+            ndata = core.message_passing(
+                g, message_func, reduce_func, apply_node_func, relation_feats
+            )
+            if (
+                core.is_builtin(reduce_func)
+                and reduce_func.name in ["min", "max"]
+                and ndata
+            ):
+                # Replace infinity with zero for isolated nodes
+                key = list(ndata.keys())[0]
+                ndata[key] = F.replace_inf_with_zero(ndata[key])
+            self._set_n_repr(dtid, ALL, ndata)
+        else:  # heterogeneous graph with number of relation types > 1
+            if relation_feats:
+                raise DGLError(
+                    "There is no support for using relation_feats "
+                    "argument with graphs stored as dgl.heterograph. "
+                    "Try using dgl.graph with edge types for subsequent "
+                    "edges stored under edata['etype']."
+                )
+            if not core.is_builtin(message_func) or not core.is_builtin(
+                reduce_func
+            ):
+                raise DGLError(
+                    "User defined functions are not yet "
+                    "supported in update_all for heterogeneous graphs. "
+                    "Please use multi_update_all instead."
+                )
+            if reduce_func.name in ["mean"]:
+                raise NotImplementedError(
+                    "Cannot set both intra-type and inter-type reduce "
+                    "operators as 'mean' using update_all. Please use "
+                    "multi_update_all instead."
+                )
+            g = self
+            all_out = core.message_passing(
+                g, message_func, reduce_func, apply_node_func)
+            key = list(all_out.keys())[0]
+            out_tensor_tuples = all_out[key]
+
+            dst_tensor = {}
+            for _, _, dsttype in g.canonical_etypes:
+                dtid = g.get_ntype_id(dsttype)
+                dst_tensor[key] = out_tensor_tuples[dtid]
+                if core.is_builtin(reduce_func) and reduce_func.name in [
+                    "min",
+                    "max",
+                ]:
+                    dst_tensor[key] = F.replace_inf_with_zero(dst_tensor[key])
+                self._node_frames[dtid].update(dst_tensor)
+
+    def update_all(
+        self,
+        message_func,
+        reduce_func,
+        apply_node_func=None,
+        etype=None
     ):
         """Send messages along all the edges of the specified type
         and update all the nodes of the corresponding destination type.
@@ -5107,61 +5175,97 @@ class DGLGraph(object):
         >>> g.nodes['user'].data['h']
         tensor([[0.],
                 [4.]])
-        """
-        # Graph with one relation type
-        if self._graph.number_of_etypes() == 1 or etype is not None:
-            etid = self.get_etype_id(etype)
-            etype = self.canonical_etypes[etid]
-            _, dtid = self._graph.metagraph.find_edge(etid)
-            g = self if etype is None else self[etype]
-            ndata = core.message_passing(
-                g, message_func, reduce_func, apply_node_func, efeats_redirected
-            )
-            if (
-                core.is_builtin(reduce_func)
-                and reduce_func.name in ["min", "max"]
-                and ndata
-            ):
-                # Replace infinity with zero for isolated nodes
-                key = list(ndata.keys())[0]
-                ndata[key] = F.replace_inf_with_zero(ndata[key])
-            self._set_n_repr(dtid, ALL, ndata)
-        else:  # heterogeneous graph with number of relation types > 1
-            if efeats_redirected:
-                raise DGLError("There is no support for using efeats_redirected "
-                               "argument with graphs stored as dgl.heterograph. "
-                               "Try using dgl.graph with edge types for subsequent "
-                               "edges stored under edata['etype'].")
-            if not core.is_builtin(message_func) or not core.is_builtin(
-                reduce_func
-            ):
-                raise DGLError(
-                    "User defined functions are not yet "
-                    "supported in update_all for heterogeneous graphs. "
-                    "Please use multi_update_all instead."
-                )
-            if reduce_func.name in ["mean"]:
-                raise NotImplementedError(
-                    "Cannot set both intra-type and inter-type reduce "
-                    "operators as 'mean' using update_all. Please use "
-                    "multi_update_all instead."
-                )
-            g = self
-            all_out = core.message_passing(
-                g, message_func, reduce_func, apply_node_func)
-            key = list(all_out.keys())[0]
-            out_tensor_tuples = all_out[key]
 
-            dst_tensor = {}
-            for _, _, dsttype in g.canonical_etypes:
-                dtid = g.get_ntype_id(dsttype)
-                dst_tensor[key] = out_tensor_tuples[dtid]
-                if core.is_builtin(reduce_func) and reduce_func.name in [
-                    "min",
-                    "max",
-                ]:
-                    dst_tensor[key] = F.replace_inf_with_zero(dst_tensor[key])
-                self._node_frames[dtid].update(dst_tensor)
+        See Also
+        --------
+        update_all_relationwise
+        """
+        self._update_all(message_func, reduce_func, apply_node_func, etype)
+
+    def update_all_relationwise(
+        self,
+        message_func,
+        reduce_func,
+        apply_node_func=None,
+        etype=None,
+        relation_feats=None,
+    ):
+        """Send messages along all the edges of the specified type
+        and update all the nodes of the corresponding destination type.
+
+        It is a version of update_all function meant to be used on graphs created with :func:`dgl.graph`
+        but with edge features speficying which relation each edge represents.
+        It is meant for working with relation-wise (not edge-wise) features and can be used e.g. for efficient implementation of path-based
+        GNN models like `Neural Bellman-Ford Network (Zhu et al. <https://arxiv.org/pdf/2106.06935.pdf>`__.
+
+        Parameters
+        ----------
+        message_func : dgl.function.BuiltinFunction or callable
+            The message function to generate messages along the edges.
+            It must be either a :ref:`api-built-in` or a :ref:`apiudf`.
+        reduce_func : dgl.function.BuiltinFunction or callable
+            The reduce function to aggregate the messages.
+            It must be either a :ref:`api-built-in` or a :ref:`apiudf`.
+        apply_node_func : callable, optional
+            An optional apply function to further update the node features
+            after the message reduction. It must be a :ref:`apiudf`.
+        etype : str or (str, str, str), optional
+            The type name of the edges. The allowed type name formats are:
+            * ``(str, str, str)`` for source node type, edge type and destination node type.
+            * or one ``str`` edge type name if the name can uniquely identify a
+              triplet format in the graph.
+
+            Can be omitted if the graph has only one type of edges.
+        relation_feats : Tensor, optional
+            Tensor of features of the relations. For each edge, proper feature vector will be extracted from it during message passing based on edge types
+            specified in edata.
+            If not provided, it will have the same behaviour as regular update_all.
+
+        Notes
+        -----
+        * If some of the nodes in the graph has no in-edges, DGL does not invoke
+          message and reduce functions for these nodes and fill their aggregated messages
+          with zero. Users can control the filled values via :meth:`set_n_initializer`.
+          DGL still invokes :attr:`apply_node_func` if provided.
+        * DGL recommends using DGL's bulit-in function for the :attr:`message_func`
+          and the :attr:`reduce_func` arguments,
+          because DGL will invoke efficient kernels that avoids copying node features to
+          edge features in this case.
+
+        Example
+        --------
+        >>> import dgl
+        >>> import dgl.function as fn
+        >>> import torch
+
+        >>> g = dgl.graph(([1, 2, 1, 0, 3, 0], [0, 0, 2, 4, 4, 3]))
+        >>> g.ndata['x'] = torch.reshape(torch.arange(10.), (5,2))
+
+        Edge data specifies the relation number that each edge represents:
+
+        >>> g.edata['rel_type'] = torch.tensor([0, 2, 0, 1, 1, 0])
+
+        Relations' features tensor can be a learnable parameter of the model or can be stored independently:
+
+        >>> relation_feats = torch.tensor([[1., 1],[2, 2],[3, 3]])
+
+        Do update all using proper relation features chosen based on declared rel_type for each edge:
+
+        >>> g.update_all_relationwise(fn.u_mul_e('x', 'rel_type'', 'm'), fn.sum('m', 'h'), relation_feats=relation_feats)
+        >>> g.ndata['h']
+        tensor([[14., 18.],
+                [ 0.,  0.],
+                [ 2.,  3.],
+                [ 0.,  1.],
+                [12., 16.]])
+
+        See Also
+        --------
+        update_all
+        """
+        self._update_all(
+            message_func, reduce_func, apply_node_func, etype, relation_feats
+        )
 
     #################################################################
     # Message passing on heterograph

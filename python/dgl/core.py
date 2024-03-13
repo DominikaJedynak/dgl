@@ -316,7 +316,7 @@ def invoke_gspmm(
     srcdata=None,
     dstdata=None,
     edata=None,
-    efeats_redirected=None,
+    relation_feats=None,
 ):
     """Invoke g-SPMM computation on the graph.
 
@@ -334,6 +334,8 @@ def invoke_gspmm(
         Destination node feature data. If not provided, it use ``graph.dstdata``.
     edata : dict[str, Tensor], optional
         Edge feature data. If not provided, it use ``graph.edata``.
+    relation_feats : Tensor
+        Tensor of features of the relations present is the graph.
 
     Returns
     -------
@@ -363,7 +365,7 @@ def invoke_gspmm(
             lhs_target, _, rhs_target = mfunc.name.split("_", 2)
             x = data_dict_to_list(graph, x, mfunc, lhs_target)
             y = data_dict_to_list(graph, y, mfunc, rhs_target)
-        z = op(graph, x, y, efeats_redirected=efeats_redirected)
+        z = op(graph, x, y, relation_feats=relation_feats)
     else:
         x = alldata[mfunc.target][mfunc.in_field]
         op = getattr(ops, "{}_{}".format(mfunc.name, rfunc.name))
@@ -372,11 +374,11 @@ def invoke_gspmm(
                 x = data_dict_to_list(graph, x, mfunc, "u")
             else:  # "copy_e"
                 x = data_dict_to_list(graph, x, mfunc, "e")
-        z = op(graph, x, efeats_redirected)
+        z = op(graph, x, relation_feats)
     return {rfunc.out_field: z}
 
 
-def message_passing(g, mfunc, rfunc, afunc, efeats_redirected=None):
+def message_passing(g, mfunc, rfunc, afunc, relation_feats=None):
     """Invoke message passing computation on the whole graph.
 
     Parameters
@@ -389,6 +391,9 @@ def message_passing(g, mfunc, rfunc, afunc, efeats_redirected=None):
         Reduce function.
     afunc : callable or dgl.function.BuiltinFunction
         Apply function.
+    relation_feats : Tensor
+        Tensor of features of the relations present is the graph.
+
 
     Returns
     -------
@@ -402,14 +407,14 @@ def message_passing(g, mfunc, rfunc, afunc, efeats_redirected=None):
         is not None
     ):
         # invoke fused message passing
-        ndata = invoke_gspmm(
-            g, mfunc, rfunc, efeats_redirected=efeats_redirected
-        )
+        ndata = invoke_gspmm(g, mfunc, rfunc, relation_feats=relation_feats)
     else:
-        if efeats_redirected:
-            raise DGLError("There is no support for using efeats_redirected "
-                           "argument with this configuration of message and "
-                           "reduce functions. Try functions supported by SpMM.")
+        if relation_feats:
+            raise DGLError(
+                "There is no support for using relation_feats "
+                "argument with this configuration of message and "
+                "reduce functions. Try functions supported by SpMM."
+            )
         # invoke message passing in two separate steps
         # message phase
         if is_builtin(mfunc):

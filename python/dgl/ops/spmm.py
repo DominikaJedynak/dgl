@@ -36,12 +36,13 @@ def reshape_lhs_rhs(lhs_data, rhs_data):
     return lhs_data, rhs_data
 
 
-def gspmm(g, op, reduce_op, lhs_data, rhs_data, efeats_redirected=None):
+def gspmm(g, op, reduce_op, lhs_data, rhs_data, relation_feats=None):
     r"""Generalized Sparse Matrix Multiplication interface.
     It fuses two steps into one kernel.
 
-    1. Computes messages by :attr:`op` source node and edge features.
+    1. Computes messages by :attr:`op` source node and edge or relation features.
     2. Aggregate the messages by :attr:`reduce_op` as the features on destination nodes.
+    If relation_feats is None:
 
     .. math::
         x_v = \psi_{(u, v, e)\in \mathcal{G}}(\rho(x_u, x_e))
@@ -50,6 +51,18 @@ def gspmm(g, op, reduce_op, lhs_data, rhs_data, efeats_redirected=None):
     :math:`x_e` refers to :attr:`u`, :attr:`e` respectively. :math:`\rho` means binary
     operator :attr:`op` and :math:`\psi` means reduce operator :attr:`reduce_op`,
     :math:`\mathcal{G}` is the graph we apply gspmm on: :attr:`g`.
+
+    If relation_feats is not None:
+
+    .. math::
+        x_v = \psi_{(u, v, e)\in \mathcal{G}}(\rho(x_u, \mathcal{R}(x_e)))
+
+    where :math:`x_v` is the returned feature on destination nodes, and :math:`x_u`,
+    :math:`x_e` refers to :attr:`u`, :attr:`e` respectively. :math:`\rho` means binary
+    operator :attr:`op` and :math:`\psi` means reduce operator :attr:`reduce_op`, :math:`\mathcal{R}`
+    is a function choosing proper relation feature vector based on relation ids under :attr:`e`.
+    :math:`\mathcal{G}` is the graph we apply gspmm on: :attr:`g`.
+
 
     Note that this function does not handle gradients.
 
@@ -66,17 +79,21 @@ def gspmm(g, op, reduce_op, lhs_data, rhs_data, efeats_redirected=None):
         The left operand, could be None if it's not required by the op.
     rhs_data : tensor or None
         The right operand, could be None if it's not required by the op.
+    relation_feats : Tensor or None
+        Tensor of features of the relations present in the graph.
+        If not None, proper features for edges will be extracted from 
+        it based on edge type specified by rhs_data.
 
     Returns
     -------
     tensor
         The result tensor.
     """
-    if rhs_data is not None and efeats_redirected is not None:
-        efeats_redirected_indices = rhs_data
-        rhs_data = efeats_redirected
+    if rhs_data is not None and relation_feats is not None:
+        edge_to_relation_ids = rhs_data
+        rhs_data = relation_feats
     else:
-        efeats_redirected_indices = None
+        edge_to_relation_ids = None
 
     if g._graph.number_of_etypes() == 1:
         if op not in ["copy_lhs", "copy_rhs"]:
@@ -88,7 +105,7 @@ def gspmm(g, op, reduce_op, lhs_data, rhs_data, efeats_redirected=None):
             "sum" if reduce_op == "mean" else reduce_op,
             lhs_data,
             rhs_data,
-            efeats_redirected_indices=efeats_redirected_indices,
+            edge_to_relation_ids=edge_to_relation_ids,
         )
     else:
         # lhs_data or rhs_data is None only in unary functions like ``copy-u`` or ``copy_e``
@@ -176,8 +193,8 @@ def _gen_spmm_func(binary_op, reduce_op):
     )
     docstring = _attach_zerodeg_note(docstring, reduce_op)
 
-    def func(g, x, y, efeats_redirected=None):
-        return gspmm(g, binary_op, reduce_op, x, y, efeats_redirected)
+    def func(g, x, y, relation_feats=None):
+        return gspmm(g, binary_op, reduce_op, x, y, relation_feats)
 
     func.__name__ = name
     func.__doc__ = docstring
@@ -217,7 +234,7 @@ def _gen_copy_reduce_func(binary_op, reduce_op):
         reduce_op,
     )
 
-    def func(g, x, efeats_redirected=None):
+    def func(g, x, relation_feats=None):
         if binary_op == "copy_u":
             return gspmm(
                 g,
@@ -225,7 +242,7 @@ def _gen_copy_reduce_func(binary_op, reduce_op):
                 reduce_op,
                 x,
                 None,
-                efeats_redirected=efeats_redirected,
+                relation_feats=relation_feats,
             )
         else:
             return gspmm(
@@ -234,7 +251,7 @@ def _gen_copy_reduce_func(binary_op, reduce_op):
                 reduce_op,
                 None,
                 x,
-                efeats_redirected=efeats_redirected,
+                relation_feats=relation_feats,
             )
 
     func.__name__ = name

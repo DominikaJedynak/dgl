@@ -129,8 +129,8 @@ def spmm_cache_argY(op, reduce_op, req_grad_X, req_grad_Y):
 
 
 def spmm_cache_redirection(op, reduce_op, req_grad_X, req_grad_Y):
-    """Rules to identify whether to cache efeats_redirected_indices in SpMM forward stage."""
-    if op == "mul" and reduce_op == "sum":
+    """Rules to identify whether to cache edge_to_relation_ids in SpMM forward stage."""
+    if reduce_op == "sum":
         return True
     return False
 
@@ -168,9 +168,9 @@ def _cast_if_autocast_enabled(*args):
 
 class GSpMM(th.autograd.Function):
     @staticmethod
-    def forward(ctx, gidx, op, reduce_op, X, Y, efeats_redirected_indices):
+    def forward(ctx, gidx, op, reduce_op, X, Y, edge_to_relation_ids):
         out, (argX, argY) = _gspmm(
-            gidx, op, reduce_op, X, Y, efeats_redirected_indices
+            gidx, op, reduce_op, X, Y, edge_to_relation_ids
         )
         reduce_last = _need_reduce_last_dim(X, Y)
         X_shape = X.shape if X is not None else None
@@ -198,8 +198,8 @@ class GSpMM(th.autograd.Function):
         if not spmm_cache_argY(op, reduce_op, req_grad_X, req_grad_Y):
             argY = None
         if not spmm_cache_redirection(op, reduce_op, req_grad_X, req_grad_Y):
-            efeats_redirected_indices = None
-        ctx.save_for_backward(X, Y, efeats_redirected_indices, argX, argY)
+            edge_to_relation_ids = None
+        ctx.save_for_backward(X, Y, edge_to_relation_ids, argX, argY)
         return out
 
     @staticmethod
@@ -214,14 +214,12 @@ class GSpMM(th.autograd.Function):
             device,
             reduce_last,
         ) = ctx.backward_cache
-        X, Y, efeats_redirected_indices, argX, argY = ctx.saved_tensors
+        X, Y, edge_to_relation_ids, argX, argY = ctx.saved_tensors
         if op != "copy_rhs" and ctx.needs_input_grad[3]:
             g_rev = gidx.reverse()
             if reduce_op == "sum":
                 if op == "mul":
-                    dX = gspmm(
-                        g_rev, "mul", "sum", dZ, Y, efeats_redirected_indices
-                    )
+                    dX = gspmm(g_rev, "mul", "sum", dZ, Y, edge_to_relation_ids)
                 elif op in ["add", "copy_lhs"]:
                     dX = gspmm(g_rev, "copy_lhs", "sum", dZ, None)
             else:  # max/min
@@ -239,11 +237,14 @@ class GSpMM(th.autograd.Function):
         if op != "copy_lhs" and ctx.needs_input_grad[4]:
             if reduce_op == "sum":
                 if op == "mul" and reduce_last:
-                    dY = gsddmm(gidx, "dot", X, dZ, 'u', 'v', efeats_redirected_indices)
+                    dY = gsddmm(gidx, "dot", X, dZ,
+                                edge_to_relation_ids=edge_to_relation_ids)
                 elif op == "mul":
-                    dY = gsddmm(gidx, "mul", X, dZ, 'u', 'v', efeats_redirected_indices)
+                    dY = gsddmm(gidx, "mul", X, dZ,
+                                edge_to_relation_ids=edge_to_relation_ids)
                 elif op in ["add", "copy_rhs"]:
-                    dY = gsddmm(gidx, "copy_rhs", None, dZ)
+                    dY = gsddmm(gidx, "copy_rhs", None, dZ,
+                                edge_to_relation_ids=edge_to_relation_ids)
             else:  # max/min
                 dY = th.zeros(
                     (Y_shape[0],) + dZ.shape[1:], dtype=dtype, device=device
@@ -454,8 +455,12 @@ def sddmm_cache_Y(op, req_grad_X, req_grad_Y):
 
 class GSDDMM(th.autograd.Function):
     @staticmethod
-    def forward(ctx, gidx, op, X, Y, lhs_target, rhs_target, efeats_redirected_indices):
-        out = _gsddmm(gidx, op, X, Y, lhs_target, rhs_target, efeats_redirected_indices)
+    def forward(
+        ctx, gidx, op, X, Y, lhs_target, rhs_target, edge_to_relation_ids
+    ):
+        out = _gsddmm(
+            gidx, op, X, Y, lhs_target, rhs_target, edge_to_relation_ids
+        )
         X_shape = X.shape if X is not None else None
         Y_shape = Y.shape if Y is not None else None
         ctx.backward_cache = gidx, op, lhs_target, rhs_target, X_shape, Y_shape
@@ -1032,9 +1037,7 @@ class GATHERMM(th.autograd.Function):
         return A_grad, B_grad, None, None
 
 
-def gspmm(
-    gidx, op, reduce_op, lhs_data, rhs_data, efeats_redirected_indices=None
-):
+def gspmm(gidx, op, reduce_op, lhs_data, rhs_data, edge_to_relation_ids=None):
     if op == "sub":
         op = "add"
         rhs_data = -rhs_data
@@ -1042,13 +1045,14 @@ def gspmm(
         op = "mul"
         rhs_data = 1.0 / rhs_data
     args = _cast_if_autocast_enabled(
-        gidx, op, reduce_op, lhs_data, rhs_data, efeats_redirected_indices
+        gidx, op, reduce_op, lhs_data, rhs_data, edge_to_relation_ids
     )
     with _disable_autocast_if_enabled():
         return GSpMM.apply(*args)
 
 
-def gsddmm(gidx, op, lhs_data, rhs_data, lhs_target="u", rhs_target="v", efeats_redirected_indices=None):
+def gsddmm(gidx, op, lhs_data, rhs_data, lhs_target="u", rhs_target="v",
+           edge_to_relation_ids=None):
     if op == "sub":
         op = "add"
         rhs_data = -rhs_data
@@ -1056,7 +1060,13 @@ def gsddmm(gidx, op, lhs_data, rhs_data, lhs_target="u", rhs_target="v", efeats_
         op = "mul"
         rhs_data = 1.0 / rhs_data
     args = _cast_if_autocast_enabled(
-        gidx, op, lhs_data, rhs_data, lhs_target, rhs_target, efeats_redirected_indices
+        gidx,
+        op,
+        lhs_data,
+        rhs_data,
+        lhs_target,
+        rhs_target,
+        edge_to_relation_ids,
     )
     with _disable_autocast_if_enabled():
         return GSDDMM.apply(*args)

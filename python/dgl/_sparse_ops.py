@@ -2,10 +2,11 @@
 # pylint: disable= invalid-name
 from __future__ import absolute_import
 
+import torch as th
+
 from . import backend as F, ndarray as nd
 from ._ffi.function import _init_api
 from .base import DGLError
-import torch as th
 
 
 def infer_broadcast_shape(op, shp1, shp2):
@@ -154,10 +155,12 @@ def _edge_softmax_forward(gidx, e, op):
     return myout
 
 
-def _gspmm(gidx, op, reduce_op, u, e, efeats_redirected_indices=None):
+def _gspmm(gidx, op, reduce_op, u, e, edge_to_relation_ids=None):
     r"""Generalized Sparse Matrix Multiplication interface. It takes the result of
-    :attr:`op` on source node feature and edge feature, leads to a message on edge.
+    :attr:`op` on source node feature and edge or relation feature, leads to a message on edge.
     Then aggregates the message by :attr:`reduce_op` on destination nodes.
+
+    If edge_to_relation_ids is None:
 
     .. math::
         x_v = \psi_{(u, v, e)\in \mathcal{G}}(\rho(x_u, x_e))
@@ -165,6 +168,17 @@ def _gspmm(gidx, op, reduce_op, u, e, efeats_redirected_indices=None):
     where :math:`x_v` is the returned feature on destination nodes, and :math`x_u`,
     :math:`x_e` refers to :attr:`u`, :attr:`e` respectively. :math:`\rho` means binary
     operator :attr:`op` and :math:`\psi` means reduce operator :attr:`reduce_op`,
+    :math:`\mathcal{G}` is the graph we apply gspmm on: :attr:`g`.
+
+    If edge_to_relation_ids is not None:
+
+    .. math::
+        x_v = \psi_{(u, v, e)\in \mathcal{G}}(\rho(x_u, x_{r_e}))
+
+    where :math:`x_v` is the returned feature on destination nodes, :math:`x_u`,
+    refers to :attr:`u` and :math:`x_{r_e}` represent vector from :attr:`e` chosen
+    based on which relation the edge represents which is indicated by edge_to_relation_ids.
+    :math:`\rho` means binary operator :attr:`op` and :math:`\psi` means reduce operator :attr:`reduce_op`.
     :math:`\mathcal{G}` is the graph we apply gspmm on: :attr:`g`.
 
     Note that this function does not handle gradients.
@@ -182,6 +196,9 @@ def _gspmm(gidx, op, reduce_op, u, e, efeats_redirected_indices=None):
         The feature on source nodes, could be None if op is ``copy_rhs``.
     e : tensor or None
         The feature on edges, could be None if op is ``copy_lhs``.
+    edge_to_relation_ids : Tensor or None
+        Tensor of relations' ids informing which relation subsequent edges represent.
+
 
     Returns
     -------
@@ -199,18 +216,16 @@ def _gspmm(gidx, op, reduce_op, u, e, efeats_redirected_indices=None):
         raise DGLError("We only support gspmm on graph with one edge type")
 
     idtype = getattr(F, gidx.dtype)
-    if efeats_redirected_indices is not None:
-        if F.dtype(efeats_redirected_indices) != idtype:
+    if edge_to_relation_ids is not None:
+        if F.dtype(edge_to_relation_ids) != idtype:
             raise DGLError(
-                "When efeats_redirected is provided, the edata features should have type {} but type"
-                " {} is provided".format(
-                    idtype, F.dtype(efeats_redirected_indices)
-                )
+                "When edge_to_relation_ids is provided, the edata features should have type {} but type"
+                " {} is provided".format(idtype, F.dtype(edge_to_relation_ids))
             )
 
-        if efeats_redirected_indices.ndim != 1:
+        if edge_to_relation_ids.ndim != 1:
             raise DGLError(
-                "When efeats_redirected is provided, the edata features should have ndim=1, i.e, a scalar index for each edge"
+                "When edge_to_relation_ids is provided, the edata features should have ndim=1, i.e, a scalar index for each edge"
             )
     use_u = op != "copy_rhs"
     use_e = op != "copy_lhs"
@@ -232,12 +247,10 @@ def _gspmm(gidx, op, reduce_op, u, e, efeats_redirected_indices=None):
             e = F.unsqueeze(e, -1)
             expand_e = True
         if (
-            efeats_redirected_indices is not None
-            and F.ndim(efeats_redirected_indices) == 1
+            edge_to_relation_ids is not None
+            and F.ndim(edge_to_relation_ids) == 1
         ):
-            efeats_redirected_indices = F.unsqueeze(
-                efeats_redirected_indices, -1
-            )
+            edge_to_relation_ids = F.unsqueeze(edge_to_relation_ids, -1)
 
     ctx = F.context(u) if use_u else F.context(e)
     dtype = F.dtype(u) if use_u else F.dtype(e)
@@ -265,7 +278,7 @@ def _gspmm(gidx, op, reduce_op, u, e, efeats_redirected_indices=None):
             to_dgl_nd(u if use_u else None),
             to_dgl_nd(e if use_e else None),
             to_dgl_nd_for_write(v),
-            to_dgl_nd(efeats_redirected_indices),
+            to_dgl_nd(edge_to_relation_ids),
             arg_u_nd,
             arg_e_nd,
         )
@@ -502,10 +515,20 @@ def _gather_mm_scatter(A, B, out, idx_a=None, idx_b=None, idx_c=None):
     return out
 
 
-def _gsddmm(gidx, op, lhs, rhs, lhs_target="u", rhs_target="v", efeats_redirected_indices=None):
+def _gsddmm(
+    gidx,
+    op,
+    lhs,
+    rhs,
+    lhs_target="u",
+    rhs_target="v",
+    edge_to_relation_ids=None,
+):
     r"""Generalized Sampled-Dense-Dense Matrix Multiplication interface. It
     takes the result of :attr:`op` on source node feature and destination node
     feature, leads to a feature on edge.
+
+    If edge_to_relation_ids is None:
 
     .. math::
         x_{e} = \phi(x_u, x_e, x_v), \forall (u,e,v)\in \mathcal{G}
@@ -513,6 +536,17 @@ def _gsddmm(gidx, op, lhs, rhs, lhs_target="u", rhs_target="v", efeats_redirecte
     where :math:`x_{e}` is the returned feature on edges and :math:`x_u`,
     :math:`x_v` refers to :attr:`u`, :attr:`v` respectively. :math:`\phi`
     is the binary operator :attr:`op`, and :math:`\mathcal{G}` is the graph
+    we apply gsddmm on: :attr:`g`.
+
+    If edge_to_relation_ids is not None:
+
+    .. math::
+        x_{r_e} = \phi(x_u, x_{r_e}, x_v), \forall (u,e,v)\in \mathcal{G}
+
+    where :math:`x_u`, :math:`x_v` refers to :attr:`u`, :attr:`v` respectively
+    and :math:`x_{r_e}` represent vector from :attr:`e` chosen based on which
+    relation the edge represents which is indicated by edge_to_relation_ids.
+    :math:`\phi` is the binary operator :attr:`op`, and :math:`\mathcal{G}` is the graph
     we apply gsddmm on: :attr:`g`.
 
     Parameters
@@ -532,6 +566,8 @@ def _gsddmm(gidx, op, lhs, rhs, lhs_target="u", rhs_target="v", efeats_redirecte
     rhs_target : str
         The target of right hand operand, could be ``src``, ``edge``, ``dst``
         or their alias ``u``, ``e``, ``v``.
+    edge_to_relation_ids : Tensor or None
+        Tensor of relations' ids informing which relation subsequent edges represent.
 
     Returns
     -------
@@ -546,18 +582,16 @@ def _gsddmm(gidx, op, lhs, rhs, lhs_target="u", rhs_target="v", efeats_redirecte
         raise DGLError("We only support gsddmm on graph with one edge type")
 
     idtype = getattr(F, gidx.dtype)
-    if efeats_redirected_indices is not None:
-        if F.dtype(efeats_redirected_indices) != idtype:
+    if edge_to_relation_ids is not None:
+        if F.dtype(edge_to_relation_ids) != idtype:
             raise DGLError(
-                "When efeats_redirected is provided, the edata features should have type {} but type"
-                " {} is provided".format(
-                    idtype, F.dtype(efeats_redirected_indices)
-                )
+                "When edge_to_relation_ids is provided, the edata features should have type {} but type"
+                " {} is provided".format(idtype, F.dtype(edge_to_relation_ids))
             )
 
-        if efeats_redirected_indices.ndim != 1:
+        if edge_to_relation_ids.ndim != 1:
             raise DGLError(
-                "When efeats_redirected is provided, the edata features should have ndim=1, i.e, a scalar index for each edge"
+                "When edge_to_relation_ids is provided, the edata features should have ndim=1, i.e, a scalar index for each edge"
             )
 
     use_lhs = op != "copy_rhs"
@@ -579,12 +613,10 @@ def _gsddmm(gidx, op, lhs, rhs, lhs_target="u", rhs_target="v", efeats_redirecte
             rhs = F.unsqueeze(rhs, -1)
             expand_rhs = True
         if (
-            efeats_redirected_indices is not None
-            and F.ndim(efeats_redirected_indices) == 1
+            edge_to_relation_ids is not None
+            and F.ndim(edge_to_relation_ids) == 1
         ):
-            efeats_redirected_indices = F.unsqueeze(
-                efeats_redirected_indices, -1
-            )
+            edge_to_relation_ids = F.unsqueeze(edge_to_relation_ids, -1)
     lhs_target = target_mapping[lhs_target]
     rhs_target = target_mapping[rhs_target]
 
@@ -592,11 +624,13 @@ def _gsddmm(gidx, op, lhs, rhs, lhs_target="u", rhs_target="v", efeats_redirecte
     dtype = F.dtype(lhs) if use_lhs else F.dtype(rhs)
     lhs_shp = F.shape(lhs) if use_lhs else (0,)
     rhs_shp = F.shape(rhs) if use_rhs else (0,)
-    out_dim = th.max(efeats_redirected_indices) + 1 if efeats_redirected_indices != None else gidx.num_edges(0)
-    out_shp = (out_dim.item(),) + infer_broadcast_shape(
-        op, lhs_shp[1:], rhs_shp[1:]
+    out_dim = (
+        th.max(edge_to_relation_ids).item() + 1
+        if edge_to_relation_ids != None
+        else gidx.num_edges(0)
     )
-    if efeats_redirected_indices != None:
+    out_shp = (out_dim,) + infer_broadcast_shape(op, lhs_shp[1:], rhs_shp[1:])
+    if edge_to_relation_ids != None:
         out = F.zeros(out_shp, dtype, ctx)
     else:
         out = F.empty(out_shp, dtype, ctx)
@@ -607,7 +641,7 @@ def _gsddmm(gidx, op, lhs, rhs, lhs_target="u", rhs_target="v", efeats_redirecte
             to_dgl_nd(lhs if use_lhs else None),
             to_dgl_nd(rhs if use_rhs else None),
             to_dgl_nd_for_write(out),
-            to_dgl_nd(efeats_redirected_indices),
+            to_dgl_nd(edge_to_relation_ids),
             lhs_target,
             rhs_target,
         )

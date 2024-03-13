@@ -25,7 +25,7 @@ void SpMM(
   SparseFormat format = graph->SelectFormat(0, CSC_CODE);
   const auto& bcast = CalcBcastOff(op, ufeat, efeat);
   if (format == SparseFormat::kCOO && E_Redir.defined()){
-    LOG(FATAL) << "Usage of efeats_redirected argument is not supported for "
+    LOG(FATAL) << "Usage of relation_feats argument is not supported for "
      "SpMM operations on COO format.";
   }
 
@@ -232,7 +232,7 @@ void SDDMM(
   // TODO(zihao): format tuning
   SparseFormat format = graph->SelectFormat(0, COO_CODE);
   if (format == SparseFormat::kCSR && E_Redir.defined()){
-    LOG(FATAL) << "Usage of efeats_redirected argument is not supported for "
+    LOG(FATAL) << "Usage of relation_feats argument is not supported for "
      "SDDMM operations on CSR format.";
   }
   const auto& bcast = CalcBcastOff(op, lhs, rhs);
